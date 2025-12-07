@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-
 class ResBlock(nn.Module):
     def __init__(self, channel, dilation, kernel_size):
         super().__init__()
@@ -21,25 +20,32 @@ class ResBlock(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        # x : (B, K, t)
+        # x = (B, K, t)
         res = x
-        h = self.conv1(x)          # (B, K, t)
+        h = self.conv1(x)
         h = self.relu(h)
-        h = self.conv2(h)          # (B, K, t)
-        out = self.relu(h + res)
+        h = self.conv2(h)
+        out = self.relu(h +res)
         return out
-
 
 # prend en input un batch de sous séquences (B,C,t) avec t = % T
 # Ressort un (B,K,t)
 class Encoder(nn.Module):
-    def __init__(self, in_channel=1, representation_dim=8, num_blocks=10, kernel_size=3):
+    def __init__(
+        self,
+        in_channel=1,
+        representation_dim=8,
+        num_blocks=10,
+        kernel_size=3,
+        mask_prob=0.5,
+    ):
         super().__init__()
 
         self.representation_dim = representation_dim
         self.num_blocks = num_blocks
         self.kernel_size = kernel_size
         self.in_channel = in_channel
+        self.mask_prob = mask_prob
 
         # MLP per timestamp = Conv1D
         self.input_proj_layer = nn.Conv1d(in_channel, representation_dim, kernel_size=1)
@@ -55,9 +61,14 @@ class Encoder(nn.Module):
             blocks.append(bi)
         self.blocks = nn.Sequential(*blocks)
 
-    def forward(self, x):
+    def forward(self, x, apply_mask=True):
         # x : (B,C,t) C=1 en univarié
         z = self.input_proj_layer(x)
-        # z : (B,K,t) avec K dimension de représentation
+        # z :(B,K,t) avec K dimension de représentation
+        if self.training and apply_mask and self.mask_prob > 0.0:
+            B, K, T = z.shape
+            keep_prob = 1.0 - self.mask_prob
+            mask = torch.bernoulli(keep_prob * torch.ones(B, 1, T, device=z.device, dtype=z.dtype))
+            z = z * mask
         r = self.blocks(z) # (B,K,t)
         return r
