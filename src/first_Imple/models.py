@@ -62,6 +62,7 @@ class Encoder(nn.Module):
         self.blocks = nn.Sequential(*blocks)
 
     def forward(self, x, apply_mask=True):
+        
         # x : (B,C,t) C=1 en univarié
         z = self.input_proj_layer(x)
         # z :(B,K,t) avec K dimension de représentation
