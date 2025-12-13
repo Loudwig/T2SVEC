@@ -62,14 +62,27 @@ class Encoder(nn.Module):
         self.blocks = nn.Sequential(*blocks)
 
     def forward(self, x, apply_mask=True):
+        # x : (B, C, T)
         
-        # x : (B,C,t) C=1 en univarié
-        z = self.input_proj_layer(x)
-        # z :(B,K,t) avec K dimension de représentation
+        # --- 1. Gestion des Missing Values (NaNs) ---
+        is_missing = torch.isnan(x).any(dim=1, keepdim=True)
+        mask_obs = ~is_missing  # 1 si observé, 0 si manquant
+
+        # Remplacement temporaire des NaNs par 0 dans l'input
+        x_filled = torch.nan_to_num(x, nan=0.0)
+
+        # Projection (B, C, T) -> (B, K, T)
+        z = self.input_proj_layer(x_filled)
+        
+        z = z * mask_obs.float()
+
+        
         if self.training and apply_mask and self.mask_prob > 0.0:
             B, K, T = z.shape
             keep_prob = 1.0 - self.mask_prob
-            mask = torch.bernoulli(keep_prob * torch.ones(B, 1, T, device=z.device, dtype=z.dtype))
-            z = z * mask
-        r = self.blocks(z) # (B,K,t)
+            # mask_augment aléatoire pour le contrastive learning
+            mask_augment = torch.bernoulli(keep_prob * torch.ones(B, 1, T, device=z.device, dtype=z.dtype))
+            z = z * mask_augment
+            
+        r = self.blocks(z) # (B, K, T)
         return r
